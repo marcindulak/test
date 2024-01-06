@@ -1,0 +1,55 @@
+name: main
+
+env:
+  REPO_URL: https://api.github.com/repos/marcindulak/mrd-licencjat-filozofia/releases
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+  schedule:
+    - cron: "0 0 * * 1"
+
+jobs:
+  main:
+    name: main
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+
+      - name: sudo apt-get update && sudo apt-get install -y curl git jq
+        run: sudo apt-get update && sudo apt-get install -y curl git jq
+
+      - name: git config
+        run: |
+          git config --global user.email ${{ secrets.GIT_USER_EMAIL }}
+          git config --global user.name ${{ secrets.GIT_USER_NAME }}
+
+      - name: get date and download_count
+        run: |
+          download_count=$(curl -s ${{ env.REPO_URL }} | jq -r '.[].assets[].download_count')
+          echo "date=$(date -u --iso-8601=seconds)" >> $GITHUB_ENV
+          echo "download_count=$download_count" >> $GITHUB_ENV
+
+      - name: save date and download_count
+        run: |
+          echo "${{ env.date }},${{ env.download_count }}" >> .download_count.csv
+
+      - name: publish date and download_count
+        run: |
+          entry="| $(tail -1 .download_count.csv | sed 's/,/ | /') |"
+          sed -i '/+00:00/d' README.md
+          sed -i "/^| ---.*/a $entry" README.md
+
+      - name: publish github pages
+        run: |
+          cp -p README.md docs/index.md
+
+      - name: commit
+        run: |
+          git add .download_count.csv README.md docs/index.md
+          git commit --amend --no-edit
+          git push --force-with-lease
